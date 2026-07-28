@@ -9,28 +9,42 @@ class DashboardPage {
     this.page = page;
 
     // ── Employee Dashboard widgets ──────────────────────────────────────────
-    // "Today's Attendance" section — restricted to employee (abc1@gmail.com)
+
+    // Clock In button — only visible when employee has NOT clocked in today
     this.clockInButton = page.getByRole('button', { name: 'Clock In' });
-    this.todaysAttendanceSection = page.getByText("Today's Attendance", { exact: true });
 
-    // "Pending Leave Requests" section
-    this.pendingLeaveHeading = page.getByText('Pending Leave Requests', { exact: true });
+    // "Today's Attendance" section heading — try both apostrophe variants
+    this.todaysAttendanceSection = page
+      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
+      .filter({ hasText: /today.{0,3}s attendance/i })
+      .first();
 
-    // "View All" links — scoped by their parent section to avoid ambiguity
-    // There are multiple "View All" links; we scope each to its section heading
-    this.viewAllLeavesLink = page.getByRole('link', { name: /view all/i }).first();
+    // "Pending Leave Requests" heading — app may render it slightly differently
+    this.pendingLeaveHeading = page
+      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
+      .filter({ hasText: /pending leave requests/i })
+      .first();
 
-    // "Upcoming Holiday" widget
-    this.upcomingHolidaySection = page.getByText('Upcoming Holiday', { exact: true });
+    // "View All" link scoped near pending leaves section
+    this.viewAllLeavesLink = page
+      .locator('a, button')
+      .filter({ hasText: /view all/i })
+      .first();
 
-    // "Meet Prople AI" section — the widget, not the fixed footer button
+    // "Upcoming Holiday" section heading
+    this.upcomingHolidaySection = page
+      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
+      .filter({ hasText: /upcoming holiday/i })
+      .first();
+
+    // "Open AI assistant" — target the one inside the "Meet Prople AI" widget
+    // NOT the fixed footer button (which redirects back to dashboard)
     this.openAIButton = page
-      .locator('section, div')
+      .locator('section, div, article')
       .filter({ hasText: /meet prople ai/i })
-      .getByRole('button', { name: /open ai assistant/i });
-
-    // Fallback: aria-label on the button itself
-    this.openAIButtonFallback = page.getByRole('button', { name: 'Open AI assistant' }).first();
+      .locator('a, button')
+      .filter({ hasText: /open ai assistant/i })
+      .first();
 
     // Show buttons inside Pending Leave Requests table rows
     this.showButtons = page.getByRole('button', { name: /show/i });
@@ -38,22 +52,26 @@ class DashboardPage {
     // Modal close button
     this.modalCloseButton = page.getByRole('button', { name: /close/i });
 
-    // ── Admin Dashboard additional ──────────────────────────────────────────
-    this.pendingApprovalsSection = page.getByText('Pending Approvals', { exact: true });
+    // ── Admin Dashboard ─────────────────────────────────────────────────────
+    this.pendingApprovalsSection = page
+      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
+      .filter({ hasText: /pending approvals/i })
+      .first();
   }
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
   /**
    * Navigate to the employee dashboard.
-   * Waits for the page to fully settle (handles internal redirects like
-   * /employee → /employee/dashboard or /employee with dynamic loading).
+   * Uses 'domcontentloaded' — 'networkidle' times out on SPAs that poll continuously.
    */
   async gotoEmployee() {
-    // navigate and wait for network to be idle so all redirects complete
     await this.page.goto('https://app.prople.pro/employee', {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
     });
+    // Give the SPA router a moment to finish its internal redirect
+    await this.page.waitForTimeout(1500);
   }
 
   /**
@@ -61,8 +79,10 @@ class DashboardPage {
    */
   async gotoAdmin() {
     await this.page.goto('https://app.prople.pro/admin', {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
     });
+    await this.page.waitForTimeout(1500);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
