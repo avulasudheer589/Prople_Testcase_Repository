@@ -5,6 +5,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
+  timeout: 60000,              // 60s per test — login + SPA render takes time
   fullyParallel: false,        // run sequentially – avoids session conflicts
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
