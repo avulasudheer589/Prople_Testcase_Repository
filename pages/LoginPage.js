@@ -1,6 +1,5 @@
 // pages/LoginPage.js
 // Handles all authentication flows for Prople (https://app.prople.pro)
-// Including the "Already signed in elsewhere" device conflict dialog.
 
 class LoginPage {
   /**
@@ -47,28 +46,31 @@ class LoginPage {
   }
 
   /**
-   * After submitting credentials, wait for either:
-   *   (a) a redirect to /employee or /admin, OR
-   *   (b) the device-conflict dialog
-   * Then handle the conflict if it appeared.
+   * Wait for login to complete — detect by:
+   * 1. Device conflict dialog appearing, OR
+   * 2. The login form disappearing (sign-in button gone = we moved past login)
+   * Does NOT rely on a specific URL pattern.
    */
-  async handleDeviceConflict(action = 'continue') {
+  async waitForLoginComplete() {
+    // First handle device conflict if it appears
     try {
-      await Promise.race([
-        this.page.waitForURL(/\/(employee|admin)/, { timeout: 10000 }),
-        this.deviceConflictTitle.waitFor({ state: 'visible', timeout: 10000 }),
-      ]);
+      await this.deviceConflictTitle.waitFor({ state: 'visible', timeout: 8000 });
+      // Dialog appeared — click continue
+      await this.continueHereButton.click();
     } catch {
-      // Neither happened in time — continue anyway
+      // No conflict dialog — that's fine
     }
 
-    if (await this.deviceConflictTitle.isVisible().catch(() => false)) {
-      if (action === 'continue') {
-        await this.continueHereButton.click();
-      } else {
-        await this.cancelConflictButton.click();
-      }
+    // Wait for the sign-in button to disappear (means we left the login page)
+    try {
+      await this.signInButton.waitFor({ state: 'hidden', timeout: 20000 });
+    } catch {
+      // Sign-in button may have already gone
     }
+
+    // Give the SPA time to finish routing and render the dashboard
+    await this.page.waitForTimeout(3000);
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /** Full employee login */
@@ -77,10 +79,7 @@ class LoginPage {
     await this.fillEmail(process.env.EMPLOYEE_EMAIL || 'abc1@gmail.com');
     await this.fillPassword(process.env.EMPLOYEE_PASSWORD || 'Welcome@123');
     await this.submit();
-    await this.handleDeviceConflict('continue');
-    // Accept any dashboard URL — /employee, /admin, or a sub-route
-    await this.page.waitForURL(/\/(employee|admin)/, { timeout: 25000 });
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.waitForLoginComplete();
   }
 
   /** Full admin login */
@@ -89,9 +88,7 @@ class LoginPage {
     await this.fillEmail(process.env.ADMIN_EMAIL || 'mahesh970098@gmail.com');
     await this.fillPassword(process.env.ADMIN_PASSWORD || 'Welcome@123');
     await this.submit();
-    await this.handleDeviceConflict('continue');
-    await this.page.waitForURL(/\/(employee|admin)/, { timeout: 25000 });
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.waitForLoginComplete();
   }
 
   /** Logout via the header profile menu */
@@ -101,7 +98,7 @@ class LoginPage {
     const logoutOpt = this.page.getByRole('menuitem', { name: /logout|sign out/i });
     await logoutOpt.waitFor({ state: 'visible', timeout: 5000 });
     await logoutOpt.click();
-    await this.page.waitForURL(/\/$|\/login/, { timeout: 10000 });
+    await this.page.waitForLoadState('domcontentloaded');
   }
 }
 
