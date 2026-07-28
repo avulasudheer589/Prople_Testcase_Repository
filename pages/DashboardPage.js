@@ -8,54 +8,45 @@ class DashboardPage {
   constructor(page) {
     this.page = page;
 
-    // ── Employee Dashboard widgets ──────────────────────────────────────────
-
-    // Clock In button — only visible when employee has NOT clocked in today
+    // ── Clock In ────────────────────────────────────────────────────────────
+    // Only visible when employee has NOT clocked in today
     this.clockInButton = page.getByRole('button', { name: 'Clock In' });
 
-    // "Today's Attendance" section heading — try both apostrophe variants
+    // ── Today's Attendance ──────────────────────────────────────────────────
+    // Fuzzy match handles smart-quote vs straight-quote apostrophe variants
     this.todaysAttendanceSection = page
-      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
-      .filter({ hasText: /today.{0,3}s attendance/i })
+      .locator('*')
+      .filter({ hasText: /today.{0,3}s\s+attendance/i })
       .first();
 
-    // "Pending Leave Requests" heading — app may render it slightly differently
+    // ── Pending Leave Requests ──────────────────────────────────────────────
     this.pendingLeaveHeading = page
-      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
-      .filter({ hasText: /pending leave requests/i })
+      .locator('*')
+      .filter({ hasText: /pending\s+leave\s+requests/i })
       .first();
 
-    // "View All" link scoped near pending leaves section
+    // ── View All (leaves) ───────────────────────────────────────────────────
     this.viewAllLeavesLink = page
       .locator('a, button')
-      .filter({ hasText: /view all/i })
+      .filter({ hasText: /view\s+all/i })
       .first();
 
-    // "Upcoming Holiday" section heading
+    // ── Upcoming Holiday ────────────────────────────────────────────────────
     this.upcomingHolidaySection = page
-      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
-      .filter({ hasText: /upcoming holiday/i })
+      .locator('*')
+      .filter({ hasText: /upcoming\s+holiday/i })
       .first();
 
-    // "Open AI assistant" — target the one inside the "Meet Prople AI" widget
-    // NOT the fixed footer button (which redirects back to dashboard)
-    this.openAIButton = page
-      .locator('section, div, article')
-      .filter({ hasText: /meet prople ai/i })
-      .locator('a, button')
-      .filter({ hasText: /open ai assistant/i })
-      .first();
+    // ── Open AI assistant ───────────────────────────────────────────────────
+    // Match by aria-label attribute (the button has no visible text node)
+    this.openAIButton = page.locator('[aria-label="Open AI assistant"]').first();
 
-    // Show buttons inside Pending Leave Requests table rows
-    this.showButtons = page.getByRole('button', { name: /show/i });
-
-    // Modal close button
-    this.modalCloseButton = page.getByRole('button', { name: /close/i });
-
-    // ── Admin Dashboard ─────────────────────────────────────────────────────
+    // ── Misc ────────────────────────────────────────────────────────────────
+    this.showButtons          = page.getByRole('button', { name: /^show$/i });
+    this.modalCloseButton     = page.getByRole('button', { name: /close/i });
     this.pendingApprovalsSection = page
-      .locator('h1, h2, h3, h4, h5, h6, p, span, div')
-      .filter({ hasText: /pending approvals/i })
+      .locator('*')
+      .filter({ hasText: /pending\s+approvals/i })
       .first();
   }
 
@@ -63,63 +54,46 @@ class DashboardPage {
 
   /**
    * Navigate to the employee dashboard.
-   * Uses 'domcontentloaded' — 'networkidle' times out on SPAs that poll continuously.
+   * NEVER use 'networkidle' — Prople SPA polls continuously and never idles.
    */
   async gotoEmployee() {
     await this.page.goto('https://app.prople.pro/employee', {
       waitUntil: 'domcontentloaded',
       timeout: 20000,
     });
-    // Give the SPA router a moment to finish its internal redirect
-    await this.page.waitForTimeout(1500);
+    // Allow the SPA router to finish its internal redirect
+    await this.page.waitForTimeout(2000);
   }
 
-  /**
-   * Navigate to the admin dashboard.
-   */
+  /** Navigate to the admin dashboard */
   async gotoAdmin() {
     await this.page.goto('https://app.prople.pro/admin', {
       waitUntil: 'domcontentloaded',
       timeout: 20000,
     });
-    await this.page.waitForTimeout(1500);
+    await this.page.waitForTimeout(2000);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  /** Click Clock In if visible (only shown when employee hasn't clocked in today) */
   async clockIn() {
     await this.clockInButton.waitFor({ state: 'visible', timeout: 5000 });
     await this.clockInButton.click();
   }
 
-  /** Click the first Show button in the Pending Leave Requests table */
   async clickFirstShowButton() {
     await this.showButtons.first().waitFor({ state: 'visible', timeout: 5000 });
     await this.showButtons.first().click();
   }
 
-  /** Close any open modal dialog */
   async closeModal() {
     await this.modalCloseButton.waitFor({ state: 'visible', timeout: 5000 });
     await this.modalCloseButton.click();
   }
 
-  /** Click "View All" in the Pending Leave Requests section */
   async clickViewAllLeaves() {
     await this.viewAllLeavesLink.waitFor({ state: 'visible', timeout: 5000 });
     await this.viewAllLeavesLink.click();
-  }
-
-  /** Click the "Open AI assistant" button inside the Meet Prople AI widget */
-  async clickOpenAI() {
-    try {
-      await this.openAIButton.waitFor({ state: 'visible', timeout: 4000 });
-      await this.openAIButton.click();
-    } catch {
-      // fallback to first aria-label match
-      await this.openAIButtonFallback.click();
-    }
   }
 }
 
