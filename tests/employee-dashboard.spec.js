@@ -11,8 +11,8 @@ test.describe('Employee Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     const login = new LoginPage(page);
     await login.loginAsEmployee();
-    // loginAsEmployee() already lands us on /employee — just wait for idle
-    await page.waitForLoadState('networkidle');
+    // Use domcontentloaded — networkidle times out on SPAs that poll continuously
+    await page.waitForLoadState('domcontentloaded');
   });
 
   // ── 1. Page load ────────────────────────────────────────────────────────────
