@@ -85,7 +85,9 @@ class LoginPage {
     await this.fillPassword(process.env.EMPLOYEE_PASSWORD || 'Welcome@123');
     await this.submit();
     await this.handleDeviceConflict('continue');
-    await this.page.waitForURL(/\/employee/, { timeout: 15000 });
+    // Wait for any URL under the app domain — employee lands on /employee or sub-route
+    await this.page.waitForURL(/app\.prople\.pro\/(employee|admin)/, { timeout: 20000 });
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**
@@ -97,7 +99,9 @@ class LoginPage {
     await this.fillPassword(process.env.ADMIN_PASSWORD || 'Welcome@123');
     await this.submit();
     await this.handleDeviceConflict('continue');
-    await this.page.waitForURL(/\/admin/, { timeout: 15000 });
+    // Wait for any URL under the app domain — admin lands on /admin or sub-route
+    await this.page.waitForURL(/app\.prople\.pro\/(employee|admin)/, { timeout: 20000 });
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**
