@@ -13,10 +13,9 @@ class LoginPage {
     this.emailInput         = page.locator('input[type="email"], input[type="text"]').first();
     this.passwordInput      = page.locator('input[type="password"]').first();
     this.signInButton       = page.getByRole('button', { name: /sign in/i });
-    // "Forgot password?" can be a link, button, or plain text — try all three
-    this.forgotPasswordLink = page.getByRole('link', { name: /forgot.?password/i })
-      .or(page.getByRole('button', { name: /forgot.?password/i }))
-      .or(page.locator('a, button, [role="button"]').filter({ hasText: /forgot.?password/i }))
+    // "Forgot password?" — target any clickable element containing that text
+    this.forgotPasswordLink = page.locator('a, button, span, p, [role="button"]')
+      .filter({ hasText: /forgot.{0,5}password/i })
       .first();
 
     // --- Device Conflict Dialog ("Already signed in elsewhere") ---
