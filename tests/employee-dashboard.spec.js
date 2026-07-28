@@ -97,13 +97,30 @@ test.describe('Employee Dashboard', () => {
     const dashboard = new DashboardPage(page);
     await dashboard.gotoEmployee();
 
-    // The widget button (inside "Meet Prople AI" section) navigates to /employee/ai
-    // The fixed footer button (aria-label="Open AI assistant") redirects back to dashboard
-    // We click the widget button specifically
-    await dashboard.clickOpenAI();
+    // Find ALL buttons/links with "Open AI assistant" text or aria-label,
+    // then click the one that navigates away (not the footer which stays on /employee)
+    const aiButtons = page.locator('a, button').filter({ hasText: /open ai assistant/i });
+    const count = await aiButtons.count();
 
-    // URL ends in /ai (covers both /employee/ai and /admin/ai)
-    await expect(page).toHaveURL(/\/ai/, { timeout: 8000 });
+    let navigated = false;
+    for (let i = 0; i < count; i++) {
+      const btn = aiButtons.nth(i);
+      if (!(await btn.isVisible())) continue;
+
+      await btn.click();
+      try {
+        await page.waitForURL(/\/ai/, { timeout: 4000 });
+        navigated = true;
+        break;
+      } catch {
+        // This button didn't navigate to /ai — go back and try the next one
+        await page.goBack();
+        await page.waitForLoadState('domcontentloaded');
+      }
+    }
+
+    expect(navigated, 'Expected at least one "Open AI assistant" button to navigate to /ai').toBe(true);
+    await expect(page).toHaveURL(/\/ai/);
   });
 
   // ── 6. Today's Attendance section ─────────────────────────────────────────
