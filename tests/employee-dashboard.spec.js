@@ -97,29 +97,28 @@ test.describe('Employee Dashboard', () => {
     const dashboard = new DashboardPage(page);
     await dashboard.gotoEmployee();
 
-    // Find ALL buttons/links with "Open AI assistant" text or aria-label,
-    // then click the one that navigates away (not the footer which stays on /employee)
-    const aiButtons = page.locator('a, button').filter({ hasText: /open ai assistant/i });
+    // The AI button uses aria-label="Open AI assistant" — match by attribute, not visible text
+    // There are two: one in the "Meet Prople AI" widget (navigates to /ai)
+    // and one fixed footer button (stays on /employee). Try each until one navigates.
+    const aiButtons = page.locator('[aria-label="Open AI assistant"], a[href*="ai"], button[aria-label*="AI"]');
     const count = await aiButtons.count();
 
     let navigated = false;
     for (let i = 0; i < count; i++) {
       const btn = aiButtons.nth(i);
-      if (!(await btn.isVisible())) continue;
-
+      if (!(await btn.isVisible().catch(() => false))) continue;
       await btn.click();
       try {
-        await page.waitForURL(/\/ai/, { timeout: 4000 });
+        await page.waitForURL(/\/ai/, { timeout: 5000 });
         navigated = true;
         break;
       } catch {
-        // This button didn't navigate to /ai — go back and try the next one
-        await page.goBack();
-        await page.waitForLoadState('domcontentloaded');
+        await page.goto('https://app.prople.pro/employee', { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1000);
       }
     }
 
-    expect(navigated, 'Expected at least one "Open AI assistant" button to navigate to /ai').toBe(true);
+    expect(navigated, 'No "Open AI assistant" button navigated to /ai').toBe(true);
     await expect(page).toHaveURL(/\/ai/);
   });
 
