@@ -9,30 +9,27 @@ class LoginPage {
   constructor(page) {
     this.page = page;
 
-    // --- Locators (matched to actual Prople login DOM) ---
-    this.emailInput         = page.locator('input[type="email"], input[type="text"]').first();
-    this.passwordInput      = page.locator('input[type="password"]').first();
-    this.signInButton       = page.getByRole('button', { name: /sign in/i });
-    // "Forgot password?" — target any clickable element containing that text
-    this.forgotPasswordLink = page.locator('a, button, span, p, [role="button"]')
+    // --- Login form locators ---
+    this.emailInput    = page.locator('input[type="email"], input[type="text"]').first();
+    this.passwordInput = page.locator('input[type="password"]').first();
+    this.signInButton  = page.getByRole('button', { name: /sign in/i });
+
+    // "Forgot password?" — match any clickable element with that text
+    this.forgotPasswordLink = page
+      .locator('a, button, span, p, [role="button"]')
       .filter({ hasText: /forgot.{0,5}password/i })
       .first();
 
-    // --- Device Conflict Dialog ("Already signed in elsewhere") ---
-    this.deviceConflictDialog = page.getByRole('dialog')
-      .or(page.locator('div').filter({ hasText: /already signed in elsewhere/i }))
-      .first();
-    this.deviceConflictTitle   = page.getByText(/already signed in elsewhere/i);
-    this.continueHereButton    = page.getByRole('button', { name: /continue here/i });
-    this.cancelConflictButton  = page.getByRole('button', { name: /^cancel$/i });
+    // --- Device Conflict Dialog ---
+    this.deviceConflictTitle  = page.getByText(/already signed in elsewhere/i);
+    this.continueHereButton   = page.getByRole('button', { name: /continue here/i });
+    this.cancelConflictButton = page.getByRole('button', { name: /^cancel$/i });
   }
 
-  /**
-   * Navigate to the login page and wait for the email input.
-   */
+  /** Navigate to the login page and wait for the email input to appear */
   async goto() {
-    await this.page.goto('/');
-    await this.emailInput.waitFor({ state: 'visible', timeout: 10000 });
+    await this.page.goto('/', { waitUntil: 'domcontentloaded' });
+    await this.emailInput.waitFor({ state: 'visible', timeout: 15000 });
   }
 
   async fillEmail(email) {
@@ -50,69 +47,60 @@ class LoginPage {
   }
 
   /**
-   * Handles the "Already signed in elsewhere" modal if it appears after submitting credentials.
-   * Waits reliably for either dashboard redirect OR the conflict modal.
-   * @param {'continue' | 'cancel'} action - 'continue' to sign out the other session or 'cancel' to abort.
+   * After submitting credentials, wait for either:
+   *   (a) a redirect to /employee or /admin, OR
+   *   (b) the device-conflict dialog
+   * Then handle the conflict if it appeared.
    */
   async handleDeviceConflict(action = 'continue') {
-    const conflictModal = this.deviceConflictTitle;
-    
-    // Wait up to 8s for either redirect or conflict modal to appear
     try {
       await Promise.race([
-        this.page.waitForURL(/\/admin|\/employee/, { timeout: 8000 }),
-        conflictModal.waitFor({ state: 'visible', timeout: 8000 })
+        this.page.waitForURL(/\/(employee|admin)/, { timeout: 10000 }),
+        this.deviceConflictTitle.waitFor({ state: 'visible', timeout: 10000 }),
       ]);
     } catch {
-      // Timeout reached – check if modal is visible now
+      // Neither happened in time — continue anyway
     }
 
-    if (await conflictModal.isVisible().catch(() => false)) {
+    if (await this.deviceConflictTitle.isVisible().catch(() => false)) {
       if (action === 'continue') {
         await this.continueHereButton.click();
-      } else if (action === 'cancel') {
+      } else {
         await this.cancelConflictButton.click();
       }
     }
   }
 
-  /**
-   * Full employee login — handles sign-in and device conflict resolution end to end.
-   */
+  /** Full employee login */
   async loginAsEmployee() {
     await this.goto();
     await this.fillEmail(process.env.EMPLOYEE_EMAIL || 'abc1@gmail.com');
     await this.fillPassword(process.env.EMPLOYEE_PASSWORD || 'Welcome@123');
     await this.submit();
     await this.handleDeviceConflict('continue');
-    // Wait for any URL under the app domain — employee lands on /employee or sub-route
-    await this.page.waitForURL(/app\.prople\.pro\/(employee|admin)/, { timeout: 20000 });
+    // Accept any dashboard URL — /employee, /admin, or a sub-route
+    await this.page.waitForURL(/\/(employee|admin)/, { timeout: 25000 });
     await this.page.waitForLoadState('domcontentloaded');
   }
 
-  /**
-   * Full admin login — handles sign-in and device conflict resolution end to end.
-   */
+  /** Full admin login */
   async loginAsAdmin() {
     await this.goto();
     await this.fillEmail(process.env.ADMIN_EMAIL || 'mahesh970098@gmail.com');
     await this.fillPassword(process.env.ADMIN_PASSWORD || 'Welcome@123');
     await this.submit();
     await this.handleDeviceConflict('continue');
-    // Wait for any URL under the app domain — admin lands on /admin or sub-route
-    await this.page.waitForURL(/app\.prople\.pro\/(employee|admin)/, { timeout: 20000 });
+    await this.page.waitForURL(/\/(employee|admin)/, { timeout: 25000 });
     await this.page.waitForLoadState('domcontentloaded');
   }
 
-  /**
-   * Logs out the currently signed-in user via the header profile menu.
-   */
+  /** Logout via the header profile menu */
   async logout() {
-    const avatarButton = this.page.locator('header').getByRole('button').last();
-    await avatarButton.click();
-    const logoutOption = this.page.getByRole('menuitem', { name: /logout|sign out/i });
-    await logoutOption.waitFor({ state: 'visible', timeout: 5000 });
-    await logoutOption.click();
+    const avatarBtn = this.page.locator('header').getByRole('button').last();
+    await avatarBtn.click();
+    const logoutOpt = this.page.getByRole('menuitem', { name: /logout|sign out/i });
+    await logoutOpt.waitFor({ state: 'visible', timeout: 5000 });
+    await logoutOpt.click();
     await this.page.waitForURL(/\/$|\/login/, { timeout: 10000 });
   }
 }
