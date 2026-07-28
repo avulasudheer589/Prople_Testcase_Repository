@@ -1,4 +1,6 @@
 // @ts-check
+require('dotenv').config();   // ← loads .env so AMIKOO_KEY reaches the reporter
+
 const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
@@ -12,11 +14,12 @@ module.exports = defineConfig({
     ['html', { open: 'never' }],
   ],
   use: {
-    baseURL: 'https://app.prople.pro',
+    baseURL: process.env.BASE_URL || 'https://app.prople.pro',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'on',              // ← must be 'on' for Amikoo reporter (not retain-on-failure)
     headless: true,
+    viewport: { width: 1280, height: 720 },
   },
   projects: [
     {
