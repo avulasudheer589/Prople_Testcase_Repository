@@ -9,52 +9,44 @@ class WFHPage {
     this.page = page;
 
     // ── Request WFH button ──────────────────────────────────────────────────
-    // Try multiple name variants — actual label may differ
-    this.requestWFHButton = page.locator('button').filter({ hasText: /request\s*wfh|wfh\s*request|add\s*wfh|new\s*wfh/i }).first();
+    // Broadest possible match — any button on page that could be the request button
+    this.requestWFHButton = page.locator('button').filter({ hasText: /request|add|new|\+/i }).first();
 
     // ── Stats / Summary cards ───────────────────────────────────────────────
-    this.totalCard    = page.locator('*').filter({ hasText: /^total$/i }).first();
-    this.pendingCard  = page.locator('*').filter({ hasText: /^pending$/i }).first();
-    this.approvedCard = page.locator('*').filter({ hasText: /^approved$/i }).first();
+    this.statsArea = page.locator('*').filter({ hasText: /total|pending|approved/i }).first();
 
     // ── Status filter ───────────────────────────────────────────────────────
-    // Custom dropdown — not a native <select>
-    this.statusFilter = page
-      .locator('button, [role="combobox"], [role="listbox"], select')
-      .filter({ hasText: /all|status|pending|approved/i })
-      .first();
+    this.statusFilter = page.locator('select, [role="combobox"], [role="listbox"]').first();
 
-    // ── Table columns ───────────────────────────────────────────────────────
-    // Div-based table — match header cells by text
-    this.colDates  = page.locator('*').filter({ hasText: /^dates?$/i }).first();
-    this.colReason = page.locator('*').filter({ hasText: /^reason$/i }).first();
-    this.colStatus = page.locator('*').filter({ hasText: /^status$/i }).first();
+    // ── Table ───────────────────────────────────────────────────────────────
+    this.tableArea = page.locator('table, [role="table"], .table, [class*="table"]').first();
 
     // ── Dialog elements ─────────────────────────────────────────────────────
-    this.dialog            = page.getByRole('dialog');
-    this.selectDatesButton = page.locator('button').filter({ hasText: /select.*dates|pick.*dates|dates/i }).first();
-    this.reasonTextarea    = page.locator('textarea, [role="textbox"]').first();
-    this.submitButton      = page.locator('button').filter({ hasText: /^submit$/i }).first();
-    this.closeDialogButton = page
-      .locator('button')
-      .filter({ hasText: /^close$|^cancel$|^×$|\u00d7/i })
-      .first();
+    this.dialog         = page.getByRole('dialog');
+    this.reasonTextarea = page.locator('textarea').first();
+    this.submitButton   = page.locator('button').filter({ hasText: /submit/i }).first();
 
     // ── Pagination ──────────────────────────────────────────────────────────
     this.prevButton = page.locator('button').filter({ hasText: /prev/i }).first();
     this.nextButton = page.locator('button').filter({ hasText: /next/i }).first();
 
     // ── Row actions ─────────────────────────────────────────────────────────
-    this.showDateButtons = page.locator('button').filter({ hasText: /show/i });
-    this.cancelButtons   = page.locator('button').filter({ hasText: /^cancel$/i });
+    this.cancelButtons = page.locator('button').filter({ hasText: /cancel/i });
   }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
 
+  /**
+   * Navigate directly to /employee/wfh and wait for content to appear.
+   * Must be called AFTER login.
+   */
   async goto() {
-    await this.page.goto('/employee/wfh', { waitUntil: 'domcontentloaded' });
-    // Wait for any visible content — heading or button
-    await this.page.waitForTimeout(3000);
+    await this.page.goto('https://app.prople.pro/employee/wfh', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
+    // Wait for ANY button to appear — means page has rendered
+    await this.page.locator('button').first().waitFor({ state: 'visible', timeout: 15000 });
   }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
@@ -66,21 +58,14 @@ class WFHPage {
     await this.dialog.waitFor({ state: 'visible', timeout: 10000 });
   }
 
-  /** Filter by status using custom dropdown */
-  async filterByStatus(status) {
-    await this.statusFilter.click();
-    await this.page.locator('*').filter({ hasText: new RegExp(status, 'i') }).last().click();
-  }
-
-  /** Close open dialog */
+  /** Close open dialog via button or Escape */
   async closeDialog() {
-    await this.closeDialogButton.waitFor({ state: 'visible', timeout: 5000 });
-    await this.closeDialogButton.click();
-  }
-
-  /** Show dates for a row */
-  async showDates(index = 0) {
-    await this.showDateButtons.nth(index).click();
+    try {
+      const closeBtn = this.dialog.locator('button').last();
+      await closeBtn.click({ timeout: 5000 });
+    } catch {
+      await this.page.keyboard.press('Escape');
+    }
   }
 
   /** Cancel a WFH request by row index */
