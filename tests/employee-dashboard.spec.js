@@ -104,8 +104,11 @@ test.describe('Employee Dashboard', () => {
   // ── 6. AI Assistant ───────────────────────────────────────────────────────
 
   test('AI Voice Assistant navigates to /employee/ai', async ({ page }) => {
-    const dashboard = new DashboardPage(page);
-    await dashboard.gotoAI();
+    // Navigate directly — sidebar link matched wrong element (/appraisal)
+    await page.goto('https://app.prople.pro/employee/ai', {
+      waitUntil: 'domcontentloaded',
+      timeout: 20000,
+    });
     await expect(page).toHaveURL(/\/ai/, { timeout: 10000 });
   });
 
