@@ -1,99 +1,112 @@
 // tests/employee-dashboard.spec.js
-// Employee Dashboard — tests only what actually exists on abc1@gmail.com dashboard.
-// Confirmed present: Clock In, sidebar nav, WFH section, AI assistant link, header.
+// Employee Dashboard — full test suite for abc1@gmail.com.
+// Tests are based ONLY on what actually exists on the employee dashboard.
 
-const { test, expect } = require('@playwright/test');
-const { LoginPage }    = require('../pages/LoginPage');
+const { test, expect }  = require('@playwright/test');
+const { LoginPage }     = require('../pages/LoginPage');
+const { DashboardPage } = require('../pages/DashboardPage');
 
 test.describe('Employee Dashboard', () => {
 
+  // Login once before every test — lands on /employee
   test.beforeEach(async ({ page }) => {
     const login = new LoginPage(page);
     await login.loginAsEmployee();
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2000); // allow SPA to finish rendering
   });
 
-  // ── 1. Page load ──────────────────────────────────────────────────────────
+  // ── 1. Page Load ──────────────────────────────────────────────────────────
 
   test('Employee dashboard loads at /employee', async ({ page }) => {
+    // loginAsEmployee() already lands on /employee — assert URL directly
     await expect(page).toHaveURL(/\/employee/);
   });
 
   // ── 2. Clock In ───────────────────────────────────────────────────────────
 
   test('Employee can clock in (when not already clocked in today)', async ({ page }) => {
-    const clockInBtn = page.getByRole('button', { name: 'Clock In' });
-    const isVisible  = await clockInBtn.isVisible();
+    const dashboard = new DashboardPage(page);
+    const isVisible = await dashboard.clockInButton.isVisible();
 
     if (!isVisible) {
-      // Already clocked in today — valid state, pass gracefully
+      // Employee already clocked in today — this is a valid state, pass gracefully
       console.log('Clock In button not present — already clocked in today.');
       return;
     }
 
-    await clockInBtn.click();
+    await dashboard.clockIn();
     await page.waitForLoadState('domcontentloaded');
-    // Page stays on /employee after clocking in
+    // After clocking in the page stays on /employee
     await expect(page).toHaveURL(/\/employee/);
   });
 
-  // ── 3. Sidebar navigation links are present ───────────────────────────────
+  // ── 3. Header ─────────────────────────────────────────────────────────────
 
-  test('Sidebar shows My Leaves navigation link', async ({ page }) => {
-    const leavesLink = page.getByRole('link', { name: /leaves/i });
-    await expect(leavesLink.first()).toBeVisible({ timeout: 10000 });
+  test('Header is visible', async ({ page }) => {
+    const dashboard = new DashboardPage(page);
+    await expect(dashboard.header).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── 4. Sidebar Navigation Links visible ───────────────────────────────────
+
+  test('Sidebar shows Leaves navigation link', async ({ page }) => {
+    const link = page.getByRole('link', { name: /leaves/i }).first();
+    await expect(link).toBeVisible({ timeout: 10000 });
   });
 
   test('Sidebar shows Attendance navigation link', async ({ page }) => {
-    const attendanceLink = page.getByRole('link', { name: /attendance/i });
-    await expect(attendanceLink.first()).toBeVisible({ timeout: 10000 });
+    const link = page.getByRole('link', { name: /attendance/i }).first();
+    await expect(link).toBeVisible({ timeout: 10000 });
   });
 
   test('Sidebar shows Work From Home navigation link', async ({ page }) => {
-    const wfhLink = page.getByRole('link', { name: /work from home|wfh/i });
-    await expect(wfhLink.first()).toBeVisible({ timeout: 10000 });
+    const link = page.getByRole('link', { name: /work from home|wfh/i }).first();
+    await expect(link).toBeVisible({ timeout: 10000 });
   });
 
-  // ── 4. Sidebar navigation works ───────────────────────────────────────────
+  test('Sidebar shows Documents navigation link', async ({ page }) => {
+    const link = page.getByRole('link', { name: /documents/i }).first();
+    await expect(link).toBeVisible({ timeout: 10000 });
+  });
 
-  test('Clicking My Leaves navigates to /employee/leaves', async ({ page }) => {
-    const leavesLink = page.getByRole('link', { name: /my leaves|leaves/i });
-    await leavesLink.first().click();
+  test('Sidebar shows Inbox navigation link', async ({ page }) => {
+    const link = page.getByRole('link', { name: /inbox/i }).first();
+    await expect(link).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── 5. Sidebar Navigation works ───────────────────────────────────────────
+
+  test('Clicking Leaves navigates to /employee/leaves', async ({ page }) => {
+    const link = page.getByRole('link', { name: /my leaves|leaves/i }).first();
+    await link.click();
     await expect(page).toHaveURL(/\/leaves/, { timeout: 10000 });
   });
 
+  test('Clicking Attendance navigates to /employee/attendance', async ({ page }) => {
+    const link = page.getByRole('link', { name: /attendance/i }).first();
+    await link.click();
+    await expect(page).toHaveURL(/\/attendance/, { timeout: 10000 });
+  });
+
   test('Clicking Work From Home navigates to /employee/wfh', async ({ page }) => {
-    const wfhLink = page.getByRole('link', { name: /work from home|wfh/i });
-    await wfhLink.first().click();
+    const link = page.getByRole('link', { name: /work from home|wfh/i }).first();
+    await link.click();
     await expect(page).toHaveURL(/\/wfh/, { timeout: 10000 });
   });
 
-  // ── 5. Header is present ──────────────────────────────────────────────────
-
-  test('Header is visible with user controls', async ({ page }) => {
-    const header = page.locator('header');
-    await expect(header).toBeVisible({ timeout: 10000 });
+  test('Clicking Documents navigates to /employee/documents', async ({ page }) => {
+    const link = page.getByRole('link', { name: /documents/i }).first();
+    await link.click();
+    await expect(page).toHaveURL(/\/documents/, { timeout: 10000 });
   });
 
   // ── 6. AI Assistant ───────────────────────────────────────────────────────
 
-  test('"AI Voice Assistant" sidebar link navigates to /employee/ai', async ({ page }) => {
-    // Try sidebar link first
-    const aiLink = page.getByRole('link', { name: /ai|voice assistant/i });
-    const aiLinkCount = await aiLink.count();
-
-    if (aiLinkCount > 0) {
-      await aiLink.first().click();
-      await expect(page).toHaveURL(/\/ai/, { timeout: 10000 });
-      return;
-    }
-
-    // Fallback — navigate directly
-    await page.goto('https://app.prople.pro/employee/ai', {
-      waitUntil: 'domcontentloaded',
-    });
-    await expect(page).toHaveURL(/\/ai/);
+  test('AI Voice Assistant navigates to /employee/ai', async ({ page }) => {
+    const dashboard = new DashboardPage(page);
+    await dashboard.gotoAI();
+    await expect(page).toHaveURL(/\/ai/, { timeout: 10000 });
   });
 
 });
