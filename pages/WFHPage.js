@@ -1,5 +1,14 @@
 // pages/WFHPage.js
-// Employee Work From Home module — /employee/wfh
+// Employee Work From Home module — /employee/EmployeeWorkType
+//
+// The WFH feature lives at /employee/EmployeeWorkType (not /employee/wfh).
+// The page renders:
+//   - A heading "My WFH Requests"
+//   - A "+ New Request" button (sky-blue) that opens the RequestModalofc dialog
+//   - A Refresh button (icon only)
+//   - A <table> with headers: #, Dates, Reason, Status, Actions
+//   - Pagination (Prev / page numbers / Next) — only when requests exist
+//   - The dialog has date-picker, reason textarea, and Submit/Close controls
 
 class WFHPage {
   /**
@@ -8,69 +17,106 @@ class WFHPage {
   constructor(page) {
     this.page = page;
 
-    // ── Request WFH button ──────────────────────────────────────────────────
-    // Broadest possible match — any button on page that could be the request button
-    this.requestWFHButton = page.locator('button').filter({ hasText: /request|add|new|\+/i }).first();
+    // ── Page heading ────────────────────────────────────────────────────────
+    // The live page renders: <h1>My WFH Requests</h1>
+    this.pageHeading = page.getByRole('heading', { name: /my wfh requests/i });
 
-    // ── Stats / Summary cards ───────────────────────────────────────────────
-    this.statsArea = page.locator('*').filter({ hasText: /total|pending|approved/i }).first();
+    // ── Request WFH button ───────────────────────────────────────────────────
+    // The button text is "+ New Request" (sky-blue bg-sky-600 button)
+    this.requestWFHButton = page.getByRole('button', { name: /new request/i });
 
-    // ── Status filter ───────────────────────────────────────────────────────
-    this.statusFilter = page.locator('select, [role="combobox"], [role="listbox"]').first();
+    // ── Refresh button ───────────────────────────────────────────────────────
+    this.refreshButton = page.getByRole('button', { name: /refresh/i });
 
-    // ── Table ───────────────────────────────────────────────────────────────
-    this.tableArea = page.locator('table, [role="table"], .table, [class*="table"]').first();
+    // ── Table ────────────────────────────────────────────────────────────────
+    // A standard <table> is always rendered (even when empty).
+    this.table = page.locator('table').first();
 
-    // ── Dialog elements ─────────────────────────────────────────────────────
-    this.dialog         = page.getByRole('dialog');
-    this.reasonTextarea = page.locator('textarea').first();
-    this.submitButton   = page.locator('button').filter({ hasText: /submit/i }).first();
+    // Table column headers
+    this.colHeaderDates   = page.getByRole('columnheader', { name: /dates/i });
+    this.colHeaderReason  = page.getByRole('columnheader', { name: /reason/i });
+    this.colHeaderStatus  = page.getByRole('columnheader', { name: /status/i });
+    this.colHeaderActions = page.getByRole('columnheader', { name: /actions/i });
 
-    // ── Pagination ──────────────────────────────────────────────────────────
-    this.prevButton = page.locator('button').filter({ hasText: /prev/i }).first();
-    this.nextButton = page.locator('button').filter({ hasText: /next/i }).first();
+    // ── Empty state ──────────────────────────────────────────────────────────
+    // Rendered when no requests exist: "No pending leaves found"
+    this.emptyState = page.getByText(/no pending (leaves|requests|wfh)/i);
 
-    // ── Row actions ─────────────────────────────────────────────────────────
-    this.cancelButtons = page.locator('button').filter({ hasText: /cancel/i });
+    // ── Dialog (RequestModalofc) ─────────────────────────────────────────────
+    // The dialog is rendered by RequestModalofc — it uses role="dialog" or a
+    // visible overlay. We target the first dialog or the modal container.
+    this.dialog = page.getByRole('dialog').first();
+
+    // Close button inside the dialog (last button or labelled Close/Cancel)
+    this.dialogCloseButton = page.getByRole('button', { name: /close|cancel/i }).last();
+
+    // ── Pagination ───────────────────────────────────────────────────────────
+    // Only rendered when requests.length > 0
+    this.prevButton = page.getByRole('button', { name: /prev/i });
+    this.nextButton = page.getByRole('button', { name: /next/i });
+
+    // "Showing X to Y of Z results" text
+    this.paginationInfo = page.getByText(/showing \d+ to \d+ of \d+ results/i);
+
+    // ── Row actions ───────────────────────────────────────────────────────────
+    // Edit (pencil icon button) and Cancel/Delete (trash icon button) per row
+    this.editButtons   = page.locator('button').filter({ has: page.locator('[data-lucide="pencil"], svg') });
+    this.deleteButtons = page.locator('button').filter({ has: page.locator('[data-lucide="trash-2"], svg') });
   }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
 
   /**
-   * Navigate directly to /employee/wfh and wait for content to appear.
+   * Navigate to the WFH page at its actual route and wait for it to render.
    * Must be called AFTER login.
    */
   async goto() {
-    await this.page.goto('https://app.prople.pro/employee/wfh', {
+    await this.page.goto('/employee/EmployeeWorkType', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
-    // Wait for ANY button to appear — means page has rendered
-    await this.page.locator('button').first().waitFor({ state: 'visible', timeout: 15000 });
+    // Wait for the heading — confirms the WFH component has mounted
+    await this.pageHeading.waitFor({ state: 'visible', timeout: 20000 });
   }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  /** Open the Request WFH dialog */
+  /** Click "+ New Request" and wait for the dialog to open */
   async openRequestDialog() {
-    await this.requestWFHButton.waitFor({ state: 'visible', timeout: 15000 });
+    await this.requestWFHButton.waitFor({ state: 'visible', timeout: 10000 });
     await this.requestWFHButton.click();
-    await this.dialog.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for the dialog/modal to become visible
+    await this.page.waitForSelector(
+      '[role="dialog"], [class*="modal"], [class*="Modal"]',
+      { state: 'visible', timeout: 10000 }
+    );
   }
 
-  /** Close open dialog via button or Escape */
+  /** Close the open dialog via its Close/Cancel button or Escape key */
   async closeDialog() {
     try {
-      const closeBtn = this.dialog.locator('button').last();
-      await closeBtn.click({ timeout: 5000 });
+      // Try explicit close button first
+      const closeBtn = this.page.getByRole('button', { name: /close|cancel/i }).last();
+      await closeBtn.waitFor({ state: 'visible', timeout: 5000 });
+      await closeBtn.click();
     } catch {
+      // Fall back to Escape
       await this.page.keyboard.press('Escape');
     }
+    // Brief wait for the dialog to animate away
+    await this.page.waitForTimeout(500);
   }
 
-  /** Cancel a WFH request by row index */
-  async cancelRequest(index = 0) {
-    await this.cancelButtons.nth(index).click();
+  /** Check if the table is visible (may be empty) */
+  async isTableVisible() {
+    return this.table.isVisible().catch(() => false);
+  }
+
+  /** Check if pagination controls are visible (only when records exist) */
+  async isPaginationVisible() {
+    const prevVisible = await this.prevButton.isVisible().catch(() => false);
+    const infoVisible = await this.paginationInfo.isVisible().catch(() => false);
+    return prevVisible || infoVisible;
   }
 }
 
