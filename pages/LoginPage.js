@@ -1,5 +1,14 @@
 // pages/LoginPage.js
-// Handles all authentication flows for Prople (https://app.prople.pro)
+// Authentication page object for Prople (https://app.prople.pro)
+//
+// Confirmed from app exploration:
+//   - Login URL  : https://app.prople.pro/  (redirects to /login)
+//   - Employee   : abc1@gmail.com / Welcome@123  → lands on /employee
+//   - Admin      : mahesh970098@gmail.com / Welcome@123  → lands on /admin
+//   - Device conflict dialog: "Already signed in elsewhere"
+//     buttons: "Continue here & sign out other device" | "Cancel"
+//   - Forgot password link is present on the login page
+//   - Logout: accessible via the user avatar/menu in the top header
 
 class LoginPage {
   /**
@@ -8,28 +17,46 @@ class LoginPage {
   constructor(page) {
     this.page = page;
 
-    // --- Login form locators ---
+    // ── Login form ──────────────────────────────────────────────────────────
     this.emailInput    = page.locator('input[type="email"], input[type="text"]').first();
     this.passwordInput = page.locator('input[type="password"]').first();
-    this.signInButton  = page.getByRole('button', { name: /sign in/i });
 
-    // "Forgot password?" — match any clickable element with that text
+    // The submit button label is "Sign In" or "Login"
+    this.signInButton  = page.getByRole('button', { name: /sign in|login/i });
+
+    // "Forgot password?" — any clickable element with that text
     this.forgotPasswordLink = page
       .locator('a, button, span, p, [role="button"]')
-      .filter({ hasText: /forgot.{0,5}password/i })
+      .filter({ hasText: /forgot.{0,10}password/i })
       .first();
 
-    // --- Device Conflict Dialog ---
-    this.deviceConflictTitle  = page.getByText(/already signed in elsewhere/i);
-    this.continueHereButton   = page.getByRole('button', { name: /continue here/i });
-    this.cancelConflictButton = page.getByRole('button', { name: /^cancel$/i });
+    // ── Error / validation messages ─────────────────────────────────────────
+    // Shown when credentials are wrong or fields are empty
+    this.errorMessage = page
+      .locator('[role="alert"], .error, [class*="error"], [class*="toast"]')
+      .first();
+
+    // ── Device conflict dialog ──────────────────────────────────────────────
+    // Appears when the same account is already signed in on another device/tab
+    this.deviceConflictDialog  = page.getByText(/already signed in elsewhere/i);
+    this.continueHereButton    = page.getByRole('button', { name: /continue here/i });
+    this.cancelConflictButton  = page.getByRole('button', { name: /^cancel$/i });
+
+    // ── Logout ──────────────────────────────────────────────────────────────
+    // User avatar / profile button in the top header (last button in header)
+    this.avatarButton = page.locator('header').getByRole('button').last();
+    this.logoutOption = page.getByRole('menuitem', { name: /logout|sign out/i });
   }
 
-  /** Navigate to the login page and wait for the email input to appear */
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  /** Go to the login page and wait for the email field to appear */
   async goto() {
     await this.page.goto('/', { waitUntil: 'domcontentloaded' });
     await this.emailInput.waitFor({ state: 'visible', timeout: 15000 });
   }
+
+  // ── Form helpers ───────────────────────────────────────────────────────────
 
   async fillEmail(email) {
     await this.emailInput.clear();
@@ -45,35 +72,50 @@ class LoginPage {
     await this.signInButton.click();
   }
 
+  // ── Post-submit helpers ────────────────────────────────────────────────────
+
   /**
-   * Wait for login to complete — detect by:
-   * 1. Device conflict dialog appearing, OR
-   * 2. The login form disappearing (sign-in button gone = we moved past login)
-   * Does NOT rely on a specific URL pattern.
+   * Wait for login to complete after submit().
+   * Handles the "already signed in elsewhere" device conflict dialog automatically.
+   * Resolves when the SPA dashboard is rendered.
    */
   async waitForLoginComplete() {
-    // First handle device conflict if it appears
+    // Handle device conflict dialog if it appears (within 8 s)
     try {
-      await this.deviceConflictTitle.waitFor({ state: 'visible', timeout: 8000 });
-      // Dialog appeared — click continue
+      await this.deviceConflictDialog.waitFor({ state: 'visible', timeout: 8000 });
       await this.continueHereButton.click();
     } catch {
-      // No conflict dialog — that's fine
+      // No conflict — continue normally
     }
 
-    // Wait for the sign-in button to disappear (means we left the login page)
+    // Wait for the sign-in button to disappear (left the login page)
     try {
       await this.signInButton.waitFor({ state: 'hidden', timeout: 20000 });
     } catch {
-      // Sign-in button may have already gone
+      // May already be gone
     }
 
-    // Give the SPA time to finish routing and render the dashboard
-    await this.page.waitForTimeout(3000);
+    // Allow the SPA to finish routing and render the dashboard
     await this.page.waitForLoadState('domcontentloaded');
+    await this.page.waitForTimeout(2000);
   }
 
-  /** Full employee login */
+  /**
+   * Wait for an error message to appear after a failed login attempt.
+   * Returns true if any error/toast is visible within the timeout.
+   */
+  async waitForErrorMessage(timeout = 8000) {
+    try {
+      await this.errorMessage.waitFor({ state: 'visible', timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Full login flows ───────────────────────────────────────────────────────
+
+  /** Login as the employee user (abc1@gmail.com) */
   async loginAsEmployee() {
     await this.goto();
     await this.fillEmail(process.env.EMPLOYEE_EMAIL || 'abc1@gmail.com');
@@ -82,7 +124,7 @@ class LoginPage {
     await this.waitForLoginComplete();
   }
 
-  /** Full admin login */
+  /** Login as the admin user (mahesh970098@gmail.com) */
   async loginAsAdmin() {
     await this.goto();
     await this.fillEmail(process.env.ADMIN_EMAIL || 'mahesh970098@gmail.com');
@@ -91,13 +133,19 @@ class LoginPage {
     await this.waitForLoginComplete();
   }
 
-  /** Logout via the header profile menu */
+  // ── Logout ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Logout via the top-header avatar/profile menu.
+   * Works for both employee and admin sessions.
+   */
   async logout() {
-    const avatarBtn = this.page.locator('header').getByRole('button').last();
-    await avatarBtn.click();
-    const logoutOpt = this.page.getByRole('menuitem', { name: /logout|sign out/i });
-    await logoutOpt.waitFor({ state: 'visible', timeout: 5000 });
-    await logoutOpt.click();
+    await this.avatarButton.waitFor({ state: 'visible', timeout: 10000 });
+    await this.avatarButton.click();
+    await this.logoutOption.waitFor({ state: 'visible', timeout: 5000 });
+    await this.logoutOption.click();
+    // Wait for redirect back to the login page
+    await this.page.waitForURL(/\/$|\/login/, { timeout: 15000 });
     await this.page.waitForLoadState('domcontentloaded');
   }
 }
