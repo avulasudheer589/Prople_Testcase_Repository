@@ -1,5 +1,21 @@
 // tests/employee-wfh.spec.js
 // Employee – Work From Home module test cases.
+// Route: /employee/wfh  (navigated via sidebar — NOT page.goto)
+//
+// ⚠️  Navigation note:
+//   This app uses SPA session auth. Calling page.goto('/employee/wfh') after
+//   login reloads the browser and destroys the session → login page appears.
+//   All tests reach the WFH page via WFHPage.goto(), which clicks the
+//   "Work From Home" sidebar link (client-side route change, session preserved).
+//
+// Page elements confirmed from app:
+//   - Summary cards: TOTAL, PENDING, APPROVED, REJECTED, TOTAL DAYS
+//   - "+ Request WFH" button → opens Request WFH modal
+//   - Status filter dropdown: All | Pending | Approved | Rejected | Cancelled
+//   - Search input field
+//   - Table columns: Days | Dates | Reason | Proof | Status | Actions
+//   - Row actions: "show (1)" (date detail) · "Cancel" (pending requests only)
+//   - Pagination: Prev / Next
 
 const { test, expect } = require('@playwright/test');
 const { LoginPage }    = require('../pages/LoginPage');
@@ -7,158 +23,122 @@ const { WFHPage }      = require('../pages/WFHPage');
 
 test.describe('Employee – Work From Home', () => {
 
+  // Login once before each test and land on the employee dashboard.
+  // WFHPage.goto() will then click the sidebar link to reach /employee/wfh.
   test.beforeEach(async ({ page }) => {
     const login = new LoginPage(page);
     await login.loginAsEmployee();
+    // Confirm we are on the dashboard before each test
+    await page.waitForURL('**/employee**', { timeout: 20000 });
     await page.waitForLoadState('domcontentloaded');
   });
 
-  // ── 1. Page loads ──────────────────────────────────────────────────────────
+  // ── 1. WFH page loads with statistics cards ───────────────────────────────
 
-  test('WFH page loads at /employee/wfh', async ({ page }) => {
+  test('WFH page loads with statistics cards', async ({ page }) => {
     const wfh = new WFHPage(page);
     await wfh.goto();
 
-    // Assert we are on the correct URL
-    await expect(page).toHaveURL(/\/wfh/, { timeout: 10000 });
+    // Confirm URL reached /employee/wfh via sidebar click
+    await expect(page).toHaveURL(/\/employee\/wfh/, { timeout: 10000 });
 
-    // Assert at least one button exists (page rendered)
-    const btn = page.locator('button').first();
-    await expect(btn).toBeVisible({ timeout: 10000 });
+    // At least one summary card must be visible (TOTAL / PENDING / APPROVED)
+    const statsVisible =
+      (await wfh.statCardTotal.isVisible().catch(() => false))    ||
+      (await wfh.statCardPending.isVisible().catch(() => false))  ||
+      (await wfh.statCardApproved.isVisible().catch(() => false));
+
+    expect(statsVisible, 'Expected at least one summary statistics card (TOTAL / PENDING / APPROVED)').toBe(true);
   });
 
-  // ── 2. Stats cards ─────────────────────────────────────────────────────────
-
-  test('WFH page shows summary statistics', async ({ page }) => {
-    const wfh = new WFHPage(page);
-    await wfh.goto();
-
-    // Accept any card showing total/pending/approved — or just the page URL
-    const statsVisible = await page.locator('*')
-      .filter({ hasText: /total|pending|approved/i })
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    // Either stats are visible OR the page loaded correctly (URL check is enough)
-    const urlOk = page.url().includes('/wfh');
-    expect(statsVisible || urlOk, 'WFH page did not load').toBe(true);
-  });
-
-  // ── 3. Request button visible ─────────────────────────────────────────────
+  // ── 2. "Request WFH" button is visible ───────────────────────────────────
 
   test('"Request WFH" button is visible on the page', async ({ page }) => {
     const wfh = new WFHPage(page);
     await wfh.goto();
 
-    // The button could say "Request", "+ Request", "Add WFH" etc.
-    // Try all visible buttons and check if any could be the request button
-    const buttons = page.locator('button');
-    const count = await buttons.count();
-    let found = false;
-    for (let i = 0; i < count; i++) {
-      const text = await buttons.nth(i).textContent().catch(() => '');
-      if (/request|add|\+|new|wfh/i.test(text || '')) {
-        found = true;
-        break;
-      }
-    }
-    // Log all buttons for debugging
-    console.log(`Total buttons on WFH page: ${count}`);
-    expect(count, 'No buttons found on WFH page').toBeGreaterThan(0);
+    // The button text is "+ Request WFH"
+    await expect(wfh.requestWFHButton).toBeVisible({ timeout: 10000 });
   });
 
-  // ── 4. Request dialog opens ───────────────────────────────────────────────
+  // ── 3. "Request WFH" button opens the request dialog ─────────────────────
 
   test('"Request WFH" button opens the request dialog', async ({ page }) => {
     const wfh = new WFHPage(page);
     await wfh.goto();
 
-    // Click the first button that isn't a nav/filter button
-    // Try buttons one by one until a dialog appears
-    const buttons = page.locator('button');
-    const count = await buttons.count();
-    let dialogOpened = false;
+    await wfh.openRequestDialog();
 
-    for (let i = 0; i < count; i++) {
-      const btn = buttons.nth(i);
-      const text = (await btn.textContent().catch(() => '')) || '';
-
-      // Skip obvious non-action buttons
-      if (/cancel|close|back|filter|search|←|→/i.test(text)) continue;
-
-      await btn.click().catch(() => {});
-      const dialogVisible = await page.getByRole('dialog')
-        .isVisible()
-        .catch(() => false);
-
-      if (dialogVisible) {
-        dialogOpened = true;
-        break;
-      }
-      // Close any unexpected dialog before next try
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(500);
-    }
-
-    expect(dialogOpened, 'No button opened a dialog on WFH page').toBe(true);
+    // Dialog must be open with the reason textarea visible
+    await expect(wfh.dialog).toBeVisible({ timeout: 10000 });
+    await expect(wfh.reasonTextarea).toBeVisible({ timeout: 10000 });
   });
 
-  // ── 5. Dialog close ───────────────────────────────────────────────────────
+  // ── 4. Dialog can be closed without submitting ────────────────────────────
 
   test('WFH dialog can be closed without submitting', async ({ page }) => {
     const wfh = new WFHPage(page);
     await wfh.goto();
 
-    const buttons = page.locator('button');
-    const count = await buttons.count();
+    await wfh.openRequestDialog();
+    await expect(wfh.dialog).toBeVisible({ timeout: 10000 });
 
-    for (let i = 0; i < count; i++) {
-      const btn = buttons.nth(i);
-      const text = (await btn.textContent().catch(() => '')) || '';
-      if (/cancel|close|back|filter|search|←|→/i.test(text)) continue;
+    await wfh.closeDialog();
 
-      await btn.click().catch(() => {});
-      const dialogVisible = await page.getByRole('dialog').isVisible().catch(() => false);
+    // Dialog must disappear
+    await expect(wfh.dialog).not.toBeVisible({ timeout: 8000 });
+  });
 
-      if (dialogVisible) {
-        // Close via Escape
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(1000);
-        const stillVisible = await page.getByRole('dialog').isVisible().catch(() => false);
-        expect(stillVisible).toBe(false);
-        return;
-      }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
+  // ── 5. Table shows correct column headers ─────────────────────────────────
+
+  test('WFH requests table shows column headers', async ({ page }) => {
+    const wfh = new WFHPage(page);
+    await wfh.goto();
+
+    // Table is always rendered (even when empty it shows headers)
+    await expect(wfh.table).toBeVisible({ timeout: 10000 });
+
+    // Verify all documented column headers
+    await expect(wfh.colHeaderDays).toBeVisible();
+    await expect(wfh.colHeaderDates).toBeVisible();
+    await expect(wfh.colHeaderReason).toBeVisible();
+    await expect(wfh.colHeaderProof).toBeVisible();
+    await expect(wfh.colHeaderStatus).toBeVisible();
+    await expect(wfh.colHeaderActions).toBeVisible();
+  });
+
+  // ── 6. Status filter is present on the WFH page ──────────────────────────
+
+  test('Status filter is present on the WFH page', async ({ page }) => {
+    const wfh = new WFHPage(page);
+    await wfh.goto();
+
+    // Status filter dropdown: All | Pending | Approved | Rejected | Cancelled
+    await expect(wfh.statusFilter).toBeVisible({ timeout: 10000 });
+  });
+
+  // ── 7. Pagination or row count indicator is visible ───────────────────────
+
+  test('Pagination or row count indicator is visible', async ({ page }) => {
+    const wfh = new WFHPage(page);
+    await wfh.goto();
+
+    const hasRows = await wfh.hasTableRows();
+
+    if (hasRows) {
+      // When records exist, Prev/Next or "Showing X to Y of Z" must appear
+      const prevVisible  = await wfh.prevButton.isVisible().catch(() => false);
+      const nextVisible  = await wfh.nextButton.isVisible().catch(() => false);
+      const infoVisible  = await wfh.paginationInfo.isVisible().catch(() => false);
+
+      expect(
+        prevVisible || nextVisible || infoVisible,
+        'Expected pagination controls when WFH records are present'
+      ).toBe(true);
+    } else {
+      // No records — table still renders (with empty body); test passes
+      await expect(wfh.table).toBeVisible({ timeout: 5000 });
     }
-  });
-
-  // ── 6. Table visible ──────────────────────────────────────────────────────
-
-  test('WFH requests table or empty state is visible', async ({ page }) => {
-    const wfh = new WFHPage(page);
-    await wfh.goto();
-
-    // Accept a table OR an empty state message
-    const table      = page.locator('table, [role="table"], [class*="table"]').first();
-    const emptyState = page.locator('*').filter({ hasText: /no (wfh|requests|records|data)/i }).first();
-
-    const tableVisible = await table.isVisible().catch(() => false);
-    const emptyVisible = await emptyState.isVisible().catch(() => false);
-
-    expect(tableVisible || emptyVisible, 'Expected table or empty state').toBe(true);
-  });
-
-  // ── 7. Page has interactive elements ──────────────────────────────────────
-
-  test('WFH page has at least one interactive element', async ({ page }) => {
-    const wfh = new WFHPage(page);
-    await wfh.goto();
-
-    // Any button, input, or select — confirms page rendered properly
-    const interactive = page.locator('button, input, select, [role="combobox"]').first();
-    await expect(interactive).toBeVisible({ timeout: 10000 });
   });
 
 });
